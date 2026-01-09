@@ -7,7 +7,7 @@
 # To be executed within the directory with target Q and U cubes
 # For more, see https://github.com/emaderubeis/Tools-for-Rotation-Measure-Synthesis-Technique
 # Author: De Rubeis Emanuele                                    
-#################################################################
+################################################################# 
 
 import numpy as np
 from numpy import nan
