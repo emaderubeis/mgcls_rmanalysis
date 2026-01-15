@@ -534,7 +534,7 @@ def plot_rmgrid(catalog, output_file):
                          norm=norm, alpha=0.6, edgecolors='black', linewidth=0.5)
     
     # Add colorbar
-    cbar = plt.colorbar(scatter, ax=ax, label='RM_corrected (rad/m2)')
+    cbar = plt.colorbar(scatter, ax=ax, label=r'RM corrected ($\rm{rad~m^{-2}}$)')
     
     # Labels and title
     ax.set_xlabel('RA (deg)', fontsize=12)
@@ -557,7 +557,7 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
     Parameters:
     - fits_file: path to FITS image
     - ra, dec: center coordinates in degrees
-    - radius: outer radius in degrees
+    - radius: outer radius in degrees, by default it is taked as R500
     - num_rings: number of annulus rings
     """
     # Load FITS image
@@ -579,6 +579,7 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
     # Create annulus rings and compute averages
     ring_radii = np.linspace(0, radius_pix, num_rings + 1)
     averages = []
+    stddeviations = []
     
     for i in range(num_rings):
         inner_r = ring_radii[i]
@@ -589,12 +590,15 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
         dist = np.sqrt((x - cx)**2 + (y - cy)**2)
         mask = (dist >= inner_r) & (dist < outer_r)
         
-        # Calculate average value in ring
+        # Calculate average value in ring and standard deviation
         avg = np.nanmean(image_data[mask])
+        std = np.nanstd(image_data[mask])
 
         # Calculate median
         #avg = np.nanmedian(image_data[mask])
+
         averages.append(avg)
+        stddeviations.append(std)
 
     
     # Convert radii back to degrees for plotting
@@ -602,9 +606,9 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
     
     # Plot radial profile
     plt.figure(figsize=(10, 6))
-    plt.plot(ring_centers, averages, 'o-')
+    plt.errorbar(ring_centers, averages, yerr=stddeviations, fmt='o-')
     plt.xlabel('Radius (degrees)')
-    plt.ylabel('Average Value')
+    plt.ylabel(r'<RM> ($\rm{rad~m^{-2}}$)')
     plt.title('Radial Profile')
     plt.grid(True)
     plt.savefig(fits_file.replace('.fits', '_avgrmprofile.png'), dpi=300, bbox_inches='tight')
@@ -707,10 +711,10 @@ if __name__ == "__main__":
 	print("SoFIA Catalog creation")
     if args['sofia']:
         print("Local SoFIA installation found: " + str(args.sofia) + "")
-	    os.system("" + str(args.sofia) + " " str(args.param)"")
+	    os.system("" + str(args.sofia) + " " str(args.param)" input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
     else:
         print("Local SoFIA installation not provided. Using the Singularity image")
-        os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + "")
+        os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
 	
     
     ## Galactic RM correction
