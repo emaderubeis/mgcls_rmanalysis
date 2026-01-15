@@ -625,6 +625,8 @@ if __name__ == "__main__":
 	parser.add_argument('--ra', help='RA of the target in degrees', type=float)
 	parser.add_argument('--dec', help='Dec of the target in degrees', type=float)
 	parser.add_argument('--rfh', help='R500 of the cluster in degrees', type=float)
+    parser.add_argument('--sofia', help='SoFIA executable (complete path) for cataloging the sources. If not provided, the script will use the official SoFIA singularity image', type=str, default='/hs/fs08/data/group-brueggen/e.derubeis/softwares/SoFiA-2-v2.6.0/sofia')
+    parser.add_argument('--param', help='SoFIA paramfile', type=str, default='sofia_mgcls.par')
     args = parser.parse_args()
 
     ## To modify for your specific case
@@ -701,13 +703,17 @@ if __name__ == "__main__":
 
 	pol_maps_maker(args.target, name_i, RMSF_FWHM)
 
-	## Catalog using SoFIA !! TO BE UPDATED WITH LOCAL INSTALLATION OF SOFIA AND CORRECT PARAMFILE !!
-	print("TO BE UPDATED WITH LOCAL INSTALLATION OF SOFIA AND CORRECT PARAMFILE")
-	os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia sofia_mgcls.par")
-
-	## Galactic RM correction
-
-
+	## Catalog using SoFIA
+	print("SoFIA Catalog creation")
+    if args['sofia']:
+        print("Local SoFIA installation found: " + str(args.sofia) + "")
+	    os.system("" + str(args.sofia) + " " str(args.param)"")
+    else:
+        print("Local SoFIA installation not provided. Using the Singularity image")
+        os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + "")
+	
+    
+    ## Galactic RM correction
 	# Run the extraction
     catalog_with_rm = extract_rm_for_sources(
         catalog_file, 
