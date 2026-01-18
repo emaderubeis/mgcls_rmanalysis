@@ -21,12 +21,13 @@ from spectral_cube import SpectralCube
 import regions
 import statistics
 import math
-import os
+import os, os.path
 import argparse
 import smplotlib
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
+from regions import CircleAnnulusPixelRegion, CirclePixelRegion, PixCoord
 
 
 def findrms(mIn, maskSup=1e-7):
@@ -78,6 +79,166 @@ def header_checker(input_fits):
         hdu2.writeto(item, overwrite = True)
         hdu.close()
         print("Header fixed for " + str(item) + "")
+
+
+def header_checker_stokesi(input):
+    hdu = fits.open(input)
+    data = hdu[0].data
+    head = hdu[0].header
+    data2 = np.zeros((np.shape(data)[2], np.shape(data)[3]))
+    data2[:,:] = data[0,0,:,:]
+    
+    head['NAXIS'] = 3
+    head['CTYPE3'] = 'FREQ'
+    head.remove('NAXIS4')
+    head.remove('CTYPE4')
+    head.remove('CDELT4')
+    head.remove('CRPIX4')
+    head.remove('CROTA4')
+    head.remove('CRVAL4')
+    head.remove('DO3D')
+    hdu2 = fits.PrimaryHDU(data2, head)
+    hdu2.writeto('' + str(input) + '_cor_header.fits', overwrite = False)
+    hdu.close()
+    print("Header fixed for " + str(input) + "")
+
+
+def plot_stokesi(target, input, ra, dec, radius):
+
+    print("Plotting Stokes I map")
+    hdul = fits.open(input)
+    data = hdul[0].data
+    header = hdul[0].header
+    header.remove('CRPIX3')
+    header.remove('CTYPE3')
+    header.remove('CRVAL3')
+    header.remove('CDELT3')
+    hdul.close()
+
+    if data.ndim == 4:
+        data = data[0, 0, :, :]
+    elif data.ndim == 3:
+        data = data[0, :, :]
+
+    wcs = WCS(header).dropaxis(2)
+    
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw=dict(projection=wcs))
+    im = ax.imshow(data, cmap='cmc.batlowK', vmax=0.02*np.max(data), origin='lower')
+    cbar = plt.colorbar(im, ax=ax, label=r'Surface brightness [$\rm{Jy~beam^{-1}}$]')
+
+    circle_center = SkyCoord(ra, dec, unit=u.deg)
+    circle = plt.Circle((ra, dec), radius, transform=ax.get_transform('world'), 
+                           fill=False, edgecolor='red', linewidth=2, label=f'R500')
+    ax.add_patch(circle)
+    
+    ax.set_xlabel('RA (J2000)', fontsize='large')
+    ax.set_ylabel('Dec (J2000)', fontsize='large')
+    ax.tick_params(labelsize='large')
+    
+    plt.tight_layout()
+    plt.savefig(str(target) + '_stokesI_15asec.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+def plot_polint(target, input, ra, dec, radius):
+    
+    print("Plotting unmasked polarized intensity map")
+    
+    hdul = fits.open(input)
+    data = hdul[0].data
+    header = hdul[0].header
+    header.remove('CRPIX3')
+    header.remove('CTYPE3')
+    header.remove('CRVAL3')
+    header.remove('CDELT3')
+    header.remove('CROTA3')
+    header.remove('CRPIX4')
+    header.remove('CTYPE4')
+    header.remove('CRVAL4')
+    header.remove('CDELT4')
+    header.remove('CROTA4')
+    #header.remove('CUNIT4')
+    header.remove('NAXIS3')
+    header.remove('NAXIS4')
+    header['NAXIS'] = 2
+    header.remove('DO3D')
+    #header['WCSAXES'] = 2
+    hdul.close()
+
+    if data.ndim == 4:
+        data = data[0, 0, :, :]
+    elif data.ndim == 3:
+        data = data[0, :, :]
+
+    wcs = WCS(header)
+    
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw=dict(projection=wcs))
+    im = ax.imshow(data, cmap='cmc.batlowK', vmax=0.5*np.max(data), origin='lower')
+    cbar = plt.colorbar(im, ax=ax, label=r'Polarized surface brightness [$\rm{Jy~beam^{-1}}$]')
+
+    circle_center = SkyCoord(ra, dec, unit=u.deg)
+    circle = plt.Circle((ra, dec), radius, transform=ax.get_transform('world'), 
+                           fill=False, edgecolor='red', linewidth=2, label=f'R500')
+    ax.add_patch(circle)
+    
+    ax.set_xlabel('RA (J2000)', fontsize='large')
+    ax.set_ylabel('Dec (J2000)', fontsize='large')
+    ax.tick_params(labelsize='large')
+    
+    plt.tight_layout()
+    plt.savefig(str(target) + '_unmasked_polint_15asec.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+
+
+def plot_polfrac(target, input, ra, dec, radius):
+    
+    print("Plotting fractional polarization map")
+    
+    hdul = fits.open(input)
+    data = hdul[0].data
+    header = hdul[0].header
+    header.remove('CRPIX3')
+    header.remove('CTYPE3')
+    header.remove('CRVAL3')
+    header.remove('CDELT3')
+    header.remove('CROTA3')
+    header.remove('CRPIX4')
+    header.remove('CTYPE4')
+    header.remove('CRVAL4')
+    header.remove('CDELT4')
+    header.remove('CROTA4')
+    #header.remove('CUNIT4')
+    header.remove('NAXIS3')
+    header.remove('NAXIS4')
+    header['NAXIS'] = 2
+    header.remove('DO3D')
+    #header['WCSAXES'] = 2
+    hdul.close()
+
+    if data.ndim == 4:
+        data = data[0, 0, :, :]
+    elif data.ndim == 3:
+        data = data[0, :, :]
+
+    wcs = WCS(header)
+    
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw=dict(projection=wcs))
+    im = ax.imshow(data, cmap='rainbow', origin='lower')
+    cbar = plt.colorbar(im, ax=ax, label=r'Fractional polarization')
+
+    circle_center = SkyCoord(ra, dec, unit=u.deg)
+    circle = plt.Circle((ra, dec), radius, transform=ax.get_transform('world'), 
+                           fill=False, edgecolor='black', linewidth=2, label=f'R500')
+    ax.add_patch(circle)
+    
+    ax.set_xlabel('RA (J2000)', fontsize='large')
+    ax.set_ylabel('Dec (J2000)', fontsize='large')
+    ax.tick_params(labelsize='large')
+    
+    plt.tight_layout()
+    plt.savefig(str(target) + '_masked_polfrac_15asec.png', dpi=300, bbox_inches='tight')
+    plt.close()
 
 
 def qu_noise_calculator(nchan, region_name, input_fits, target):
@@ -148,6 +309,7 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
     name_rm_cluster = '' + str(target) +'_RMobs_clean_masked.fits' #... name of RM image *NOT* corrected for the Milky Way contribution
     name_err_rm_cluster = '' + str(target) +'_RMobs_err_clean_masked.fits' # name of error RM image
     name_p = '' + str(target) +'_P_clean_6sig_masked.fits' #... name of polarization image
+    name_pp = '' + str(target) +'_P_clean_6sig_unmasked.fits'
     name_pola = '' + str(target) +'_polangle_clean_6sig.fits' #... name of polarization angle image
     name_polf = '' + str(target) +'_polfrac_clean_6sig.fits' #... name of polarization fraction image
 
@@ -189,6 +351,7 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
 
     #initialize output images
     img_p = np.zeros([1,1,ny,nx])
+    img_pp = np.zeros([1,1,ny,nx])
     img_rm_cluster = np.zeros([1,1,ny,nx])
     img_err_rm_cluster = np.zeros([1,1,ny,nx])
     img_pola = np.zeros([1,1,ny,nx])
@@ -211,6 +374,7 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
             q = cube_q[np.argmax(tot[:,yy,xx]),yy,xx]
             u = cube_u[np.argmax(tot[:,yy,xx]),yy,xx]
             rm = phi_axis[np.argmax(tot[:,yy,xx])]
+            img_pp[0,0,yy,xx] = f
             #for i in range (500,535):
             #	noise[i-500] = np.array(tot[i,yy,xx])
             #	noise_list = noise.tolist()
@@ -258,6 +422,9 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
     #Write the results in a fits file. We first modify the header to set the right units for each image
     hdu_p = fits.PrimaryHDU(img_p * mask_i,head_i)
     hdu_p.writeto(name_p, overwrite=True) 
+
+    hdu_pp = fits.PrimaryHDU(img_pp,head_i)
+    hdu_pp.writeto(name_pp, overwrite=True)
 
     head_rm=head_i
     head_rm['BUNIT']='rad/m/m'
@@ -374,7 +541,6 @@ def extract_rm_for_sources(catalog_file, mask_file, rm_map_file):
     # Select only the desired columns for output
     output_columns = ['name', 'id', 'ra', 'dec', 'RM_mean', 'RM_std', 'RM_median', 'RM_npix']
     catalog_output = catalog[output_columns]
-
 
     return catalog_output
 
@@ -559,6 +725,7 @@ def plot_rmgrid(catalog, output_file):
     
     # Labels and title
     ax.set_xlabel('RA (deg)', fontsize=12)
+    ax.invert_xaxis()
     ax.set_ylabel('DEC (deg)', fontsize=12)
     ax.set_title('Galactic corrected RM grid', fontsize=14)
     ax.grid(True, alpha=0.3)
@@ -680,7 +847,7 @@ if __name__ == "__main__":
     # !!!!!!!!!!!
     #
     ## !! TO BE DONE !!
-    # .) load and correct also Stokes I image for masking and cataloguing
+    # .) load and correct also Stokes I image for masking and cataloging
     
     name_i='Abell_85_aFix_pol_I_15arcsec_5pln_cor.fits.gz'
     
@@ -717,7 +884,12 @@ if __name__ == "__main__":
 
     # Here we select a region for which a "sub-cube" is obtained and write the RMS for each image of the cube 
     # for both Q and U into a text file
-    media_QU = qu_noise_calculator(nchan, region_name, args.inputs, args.target)
+
+    if os.path.exists('./' +str(args.target)+ '_noiselistQUavg.dat'):
+        print("Noise on Q and U cubes has already been calculated")
+    else:
+        print("Calculating noise on Q and U cubes")
+        media_QU = qu_noise_calculator(nchan, region_name, args.inputs, args.target)
 
 
     # Execution of rmsynth3D
@@ -731,36 +903,47 @@ if __name__ == "__main__":
         print("Command to execute the RM-synthesis 3D on your own")
         print("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + " " + str(args.inputs[1]) + " " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
 
-
+    
     # Execution of the rmclean3D
     if (args.rmclean == True):
-        print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c " + str(media_QU) + " -n 1000 -v -o " + str(args.target) + "_")
-        os.system("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c " + str(media_QU) + " -n 1000 -v -o " + str(args.target) + "_")
+        print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c 3.464e-5 -n 1000 -v -o " + str(args.target) + "_")
+        os.system("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c 3.464e-5 -n 1000 -v -o " + str(args.target) + "_")
     else:
         print("Command to execute the rmclean3d on your own")
-        print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c " + str(media_QU) + " -n 1000 -v -o " + str(args.target) + "_")
+        print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c 3.464e-5 -n 1000 -v -o " + str(args.target) + "_")
 
     # After doing RM-synthesis (and eventually rmclean), is now time to extract the RM information from the (cleaned)FDF
 
-    #useful numbers as input to the script
+
+    print("Stokes I map header correction")
+    header_checker_stokesi(name_i)
 
     #sigma_p = 4.33e-6 # Jy/beam,read from the RMsynth_parameters.py script
     RMSF_FWHM = 45.44 # in rad/m2,read from the RMSF_FWHM.fits image or from the RMsynth_parameters.py script (theoretical value)
 
     pol_maps_maker(args.target, name_i, RMSF_FWHM)
 
+    print("Plotting maps")
+    plot_stokesi(args.target, "" + str(name_i) + "_cor_header.fits", args.ra, args.dec, args.rfh)
+    plot_polint(args.target, '' + str(args.target) +'_P_clean_6sig_unmasked.fits', args.ra, args.dec, args.rfh)
+    plot_polfrac(args.target, '' + str(args.target) +'_polfrac_clean_6sig.fits', args.ra, args.dec, args.rfh)
+
     ## Catalog using SoFIA
     print("SoFIA Catalog creation")
-    if args['sofia']:
-        print("Local SoFIA installation found: " + str(args.sofia) + "")
-        os.system("" + str(args.sofia) + " " + str(args.param)+ " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
-    else:
-        print("Local SoFIA installation not provided. Using the Singularity image")
-        os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
+    
+    #if args['sofia']:      !! To be implemented !!
+    
+    print("Local SoFIA installation found: " + str(args.sofia) + "")
+    os.system("" + str(args.sofia) + " " + str(args.param)+ " input.data=" + str(name_i) + "_cor_header.fits output.filename=" + str(args.target) + "_sofia_output")
+    
+    #else:
+    #    print("Local SoFIA installation not provided. Using the Singularity image")
+    #    os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
     
     
     ## Galactic RM correction
-    # Run the extraction
+    
+    print("Extract RM for the catalog sources")
     catalog_with_rm = extract_rm_for_sources(
         catalog_file, 
         mask_file, 
@@ -768,6 +951,7 @@ if __name__ == "__main__":
     )
 
     # Apply Galactic RM correction to all source pixels
+    print("Apply Galactic RM correction to all source pixels")
     catalog_with_rm, rm_corrected_map = gal_rm_correction(
         catalog_with_rm,
         mask_file,
