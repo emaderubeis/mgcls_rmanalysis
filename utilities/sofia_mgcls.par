@@ -1,8 +1,8 @@
-input.data = Abell_4038_aFix_pol_I_15arcsec_5pln_cor.fits.gz_cor_header.fits
+input.data = J2319.2-6750_aFix_pol_I_15arcsec_5pln_cor.fits.gz_cor_header.fits
 
 # Output
 output.directory = .
-output.filename = A4038_sofia_output
+output.filename = J2319.2-6750_sofia_output
 output.writeMask = true
 
 # Source finding parameters
@@ -11,3 +11,5 @@ scfind.kernelsZ = 0
 
 linker.radiusZ = 1
 linker.minSizeZ = 1
+linker.minSizeXY=2
+linker.radiusXY=10
