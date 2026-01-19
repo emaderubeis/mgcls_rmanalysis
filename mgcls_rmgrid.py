@@ -19,15 +19,16 @@ from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord, Angle
 from spectral_cube import SpectralCube
 import regions
+from regions import CircleAnnulusPixelRegion, CirclePixelRegion, PixCoord
 import statistics
 import math
 import os, os.path
 import argparse
 import smplotlib
 import matplotlib.pyplot as plt
+import matplotlib
 from matplotlib.colors import Normalize
-import matplotlib.cm as cm
-from regions import CircleAnnulusPixelRegion, CirclePixelRegion, PixCoord
+from cmcrameri import cm
 
 
 def findrms(mIn, maskSup=1e-7):
@@ -173,7 +174,7 @@ def plot_polint(target, input, ra, dec, radius):
     wcs = WCS(header)
     
     fig, ax = plt.subplots(figsize=(10, 8), subplot_kw=dict(projection=wcs))
-    im = ax.imshow(data, cmap='cmc.batlowK', vmax=0.5*np.max(data), origin='lower')
+    im = ax.imshow(data, cmap='cmc.batlowK', vmax=0.02*np.max(data), origin='lower')
     cbar = plt.colorbar(im, ax=ax, label=r'Polarized surface brightness [$\rm{Jy~beam^{-1}}$]')
 
     circle_center = SkyCoord(ra, dec, unit=u.deg)
@@ -703,7 +704,7 @@ def plot_rmgrid(catalog, output_file):
     
     # Normalize RM values for color scale
     norm = Normalize(vmin=np.nanmin(rm_corrected), vmax=np.nanmax(rm_corrected))
-    cmap = cm.get_cmap('coolwarm')
+    cmap = matplotlib.cm.get_cmap('coolwarm')
     
     # Scale RM values to circle sizes (area proportional to RM_corrected)
     # Normalize RM to reasonable circle sizes
@@ -721,13 +722,13 @@ def plot_rmgrid(catalog, output_file):
                          norm=norm, alpha=0.6, edgecolors='black', linewidth=0.5)
     
     # Add colorbar
-    cbar = plt.colorbar(scatter, ax=ax, label=r'RM corrected ($\rm{rad~m^{-2}}$)')
+    cbar = plt.colorbar(scatter, ax=ax, label=r'RRM ($\rm{rad~m^{-2}}$)')
     
     # Labels and title
     ax.set_xlabel('RA (deg)', fontsize=12)
     ax.invert_xaxis()
     ax.set_ylabel('DEC (deg)', fontsize=12)
-    ax.set_title('Galactic corrected RM grid', fontsize=14)
+    ax.set_title('RRM grid', fontsize=14)
     ax.grid(True, alpha=0.3)
     
     # Save figure
@@ -804,7 +805,7 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
         std = np.nanstd(abs(image_data[mask.astype(bool)]))
 
         # Calculate median
-        #avg = np.nanmedian(image_data[mask])
+        #avg = np.nanmedian(abs(image_data[mask.astype(bool)]))
 
         averages.append(avg)
         stddeviations.append(std)
@@ -817,8 +818,8 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
     plt.figure(figsize=(10, 6))
     plt.errorbar(ring_centers, averages, yerr=stddeviations, fmt='o-')
     plt.xlabel('Radius (degrees)')
-    plt.ylabel(r'<|RM|> ($\rm{rad~m^{-2}}$)')
-    plt.title('Radial <|RM|> Profile')
+    plt.ylabel(r'<|RRM|> ($\rm{rad~m^{-2}}$)')
+    plt.title('Radial <|RRM|> Profile')
     plt.grid(True)
     plt.savefig(fits_file.replace('.fits', '_avgrmprofile.png'), dpi=300, bbox_inches='tight')
     #plt.show()
@@ -827,7 +828,8 @@ def radial_profile_annulus(fits_file, ra, dec, radius, num_rings):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='RM-synthesis for MGCLS cubes')
-    parser.add_argument('--inputs', help='Input Stokes Q and U cubes in this precise order', nargs=2, type=str)
+    parser.add_argument('--inputs', help='Input Stokes Q and U cubes (15") in this precise order', nargs=2, type=str)
+    parser.add_argument('--stokesi', help='Stokes I (15") PB corrected map (advanced products -> 5pln)', type=str)
     parser.add_argument('--noise', help='Region file used to evaluate the noise in the cube channels', type=str)
     parser.add_argument('--target', help='Name of the target source, should be the name of the folder containing the cubes. Used to name all the generated files.', type=str, default='targetcluster')
     parser.add_argument('--rmsynth', help='Do the RM-synthesis 3D using RMtool', action='store_true')
@@ -838,22 +840,13 @@ if __name__ == "__main__":
     parser.add_argument('--ra', help='RA of the target in degrees', type=float)
     parser.add_argument('--dec', help='Dec of the target in degrees', type=float)
     parser.add_argument('--rfh', help='R500 of the cluster in degrees', type=float)
-    parser.add_argument('--sofia', help='SoFIA executable (complete path) for cataloging the sources. If not provided, the script will use the official SoFIA singularity image', type=str, default='/hs/fs08/data/group-brueggen/e.derubeis/softwares/SoFiA-2-v2.6.0/sofia')
-    parser.add_argument('--param', help='SoFIA paramfile', type=str, default='sofia_mgcls.par')
+    parser.add_argument('--sofia', help='SoFIA executable (complete path) for cataloging the sources. If not provided, the offical SoFIA Docker image will be used', type=str, default='/hs/fs08/data/group-brueggen/e.derubeis/softwares/SoFiA-2-v2.6.0/sofia')
+    parser.add_argument('--param', help='SoFIA paramfile', type=str, default='/hs/fs08/data/group-brueggen/e.derubeis/meerkat/mgcls_rmanalysis/utilities/sofia_mgcls.par')
     args = parser.parse_args()
 
     ## To modify for your specific case
-
-    # !!!!!!!!!!!
-    #
-    ## !! TO BE DONE !!
-    # .) load and correct also Stokes I image for masking and cataloging
-    
-    name_i='Abell_85_aFix_pol_I_15arcsec_5pln_cor.fits.gz'
-    
-    # .) implement support for Python SoFIA package
-    #
-    # !!!!!!!!!!!
+   
+    name_i=args.stokesi
 
     # Number of channels (once removed the flagged ones, so check the results of the calibration) and dimesion of the cube images
     # Here forced to be 12 because of the data channelization from the MGCLS
@@ -875,7 +868,6 @@ if __name__ == "__main__":
 
     # Write here the file with the list of frequencies - for these cubes these are already known
 
-    # !!! TO BE FIXED !!!!
     frequ = np.array([908.e06, 952.e06, 996.e06, 1044.e06, 1093.e06, 1145.e06, 1318.e06, 1382.e06, 1448.e06, 1482.e06, 1594.e06, 1656.e06])
     with open(''+args.target+'_freqlist.dat', 'w') as lfr:
         for item in frequ:
@@ -917,7 +909,7 @@ if __name__ == "__main__":
 
     print("Stokes I map header correction")
     header_checker_stokesi(name_i)
-
+    
     #sigma_p = 4.33e-6 # Jy/beam,read from the RMsynth_parameters.py script
     RMSF_FWHM = 45.44 # in rad/m2,read from the RMSF_FWHM.fits image or from the RMsynth_parameters.py script (theoretical value)
 
@@ -931,16 +923,15 @@ if __name__ == "__main__":
     ## Catalog using SoFIA
     print("SoFIA Catalog creation")
     
-    #if args['sofia']:      !! To be implemented !!
-    
-    print("Local SoFIA installation found: " + str(args.sofia) + "")
-    os.system("" + str(args.sofia) + " " + str(args.param)+ " input.data=" + str(name_i) + "_cor_header.fits output.filename=" + str(args.target) + "_sofia_output")
-    
-    #else:
-    #    print("Local SoFIA installation not provided. Using the Singularity image")
-    #    os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
-    
-    
+    if os.path.exists(args.sofia):
+        print("Local SoFIA installation found: " + str(args.sofia) + "")
+        os.system("" + str(args.sofia) + " " + str(args.param)+ " input.data=" + str(name_i) + "_cor_header.fits output.filename=" + str(args.target) + "_sofia_output")
+    else:
+        print("Local SoFIA installation not found/provided. Using the Singularity image")
+        os.system("singularity exec docker://sofiapipeline/sofia2:latest sofia " + str(args.param) + " input.data=" + str(name_i) + " output.filename=" + str(args.target) + "_sofia_output")
+
+    # input.mask  you can give the Stokes I and Q/U combined mask
+  
     ## Galactic RM correction
     
     print("Extract RM for the catalog sources")
