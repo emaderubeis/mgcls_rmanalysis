@@ -983,7 +983,7 @@ if __name__ == "__main__":
     outrad = args.outrad        # Outside radius in degrees for the annulus method (see Anderson et al. 2024)
     nsources = args.nsources    # Number of sources to retain for annulus method (see Anderson et al. 2024)
 
-    '''
+    
     # Check and correct the header of the MGCLS Q and U cubes
     header_checker(args.inputs)
 
@@ -1021,7 +1021,7 @@ if __name__ == "__main__":
         print("Command to execute the rmclean3d on your own")
         print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c 3.464e-5 -n 1000 -v -o " + str(args.target) + "_")
 
-    '''
+    
     print("Stokes I map header correction")
     header_checker_stokesi(name_i)
     
