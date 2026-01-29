@@ -10,7 +10,6 @@
 ################################################################# 
 
 import numpy as np
-from numpy import nan
 import astropy.units as u
 from astropy.io import fits
 from astropy.utils import data
@@ -29,6 +28,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.colors import Normalize
 from cmcrameri import cm
+from scipy.spatial import Voronoi
+from matplotlib.patches import Polygon
 
 
 def findrms(mIn, maskSup=1e-7):
@@ -58,6 +59,10 @@ def header_checker(input_fits):
             print("" + str(item) + " header is already correct, move forward")
             continue
 
+        if os.path.exists('' + str(item) + '_cor_header.fits'):
+            print("" + str(item) + " header is already correct, move forward")
+            continue
+
         data2 = np.zeros((np.shape(data)[1], np.shape(data)[2], np.shape(data)[3]))
         data2[:,:,:] = data[0,:,:,:]
 
@@ -77,7 +82,7 @@ def header_checker(input_fits):
             head.remove('FREH'+str("{:04d}".format(i))+'')
         head.remove('DO3D')
         hdu2 = fits.PrimaryHDU(data2, head)
-        hdu2.writeto(item, overwrite = True)
+        hdu2.writeto('' + str(item) + '_cor_header.fits', overwrite = True)
         hdu.close()
         print("Header fixed for " + str(item) + "")
 
@@ -99,7 +104,7 @@ def header_checker_stokesi(input):
     head.remove('CRVAL4')
     head.remove('DO3D')
     hdu2 = fits.PrimaryHDU(data2, head)
-    hdu2.writeto('' + str(input) + '_cor_header.fits', overwrite = False)
+    hdu2.writeto('' + str(input) + '_cor_header.fits', overwrite = True)
     hdu.close()
     print("Header fixed for " + str(input) + "")
 
@@ -137,7 +142,7 @@ def plot_stokesi(target, input, ra, dec, radius):
     ax.tick_params(labelsize='large')
     
     plt.tight_layout()
-    plt.savefig(str(target) + '_stokesI_15asec.png', dpi=300, bbox_inches='tight')
+    plt.savefig('' + str(target) + '_stokesI_15asec.png', dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -249,8 +254,8 @@ def qu_noise_calculator(nchan, region_name, input_fits, target):
 
     region_lis = regions.Regions.read(region_name)
 
-    cube_sub_u = SpectralCube.read(input_fits[1])
-    cube_sub_q = SpectralCube.read(input_fits[0])
+    cube_sub_u = SpectralCube.read('' + str(input_fits[1]) + '_cor_header.fits')
+    cube_sub_q = SpectralCube.read('' + str(input_fits[0]) + '_cor_header.fits')
 
     sub_cube_u = cube_sub_u.subcube_from_regions(region_lis)
     sub_cube_q = cube_sub_q.subcube_from_regions(region_lis)
@@ -258,10 +263,9 @@ def qu_noise_calculator(nchan, region_name, input_fits, target):
     sub_cube_u_array = np.array(sub_cube_u._data)
     sub_cube_q_array = np.array(sub_cube_q._data)
 
-    print(sub_cube_u_array)
-
-    print(sub_cube_u_array.ndim)
-    print(sub_cube_u_array.shape)
+    #print(sub_cube_u_array)
+    #print(sub_cube_u_array.ndim)
+    #print(sub_cube_u_array.shape)
 
     print("Area in pixels: " + str(float(np.shape(sub_cube_u_array[0,:,:].flatten())[0])) + "")
 
@@ -293,7 +297,6 @@ def qu_noise_calculator(nchan, region_name, input_fits, target):
             list_tot[i] = (float(noise_rms_q[i])+float(noise_rms_u[i]))/2.
             lqu.write(str(list_tot[i]) + '\n')
 
-
     media_QU = statistics.mean(list_tot)
     stdev_QU = statistics.stdev(list_tot)
 
@@ -307,6 +310,7 @@ def qu_noise_calculator(nchan, region_name, input_fits, target):
 
 def pol_maps_maker(target, name_i, RMSF_FWHM):
     
+    print("Making polarization maps - Ricean bias correction")
     name_rm_cluster = '' + str(target) +'_RMobs_clean_masked.fits' #... name of RM image *NOT* corrected for the Milky Way contribution
     name_err_rm_cluster = '' + str(target) +'_RMobs_err_clean_masked.fits' # name of error RM image
     name_p = '' + str(target) +'_P_clean_6sig_masked.fits' #... name of polarization image
@@ -346,8 +350,9 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
 
     # Masking in Stokes I
     rms_i = findrms(img_i)
+    print("RMS noise in Stokes I map is: " + str(rms_i) + " Jy/beam")
     img_i_masked = np.copy(img_i)
-    img_i_masked[img_i_masked<3.*rms_i] = np.nan
+    img_i_masked[img_i_masked<5.*rms_i] = np.nan
     mask_i = img_i_masked/img_i_masked
 
     #initialize output images
@@ -404,7 +409,7 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
                 #correct for the ricean bias and write p
                 img_p[0,0,yy,xx] = np.sqrt(f*f-2.3*noise_rms*noise_rms)
                 #cluster's RM
-                img_rm_cluster[0,0,yy,xx] = rm   #!! to be added the correction for the Galactic RM !!
+                img_rm_cluster[0,0,yy,xx] = rm
                 #error on RM
                 img_err_rm_cluster[0,0,yy,xx] = (RMSF_FWHM/2)/(img_p[0,0,yy,xx]/noise_rms)
                 #polarization angle (de-rotated wrt the observed one, to obtain the intrinsic one)
@@ -419,6 +424,15 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
     img_polf=img_p/img_i_masked
     img_polf[img_polf<0] = np.nan
     img_polf[img_polf>1] = np.nan
+
+    mask_p = img_p / img_p
+
+    mask_tot = mask_i * mask_p
+    
+    head_mask = head_i
+    head_mask['BITPIX'] = 16
+    hdu_mask = fits.PrimaryHDU(mask_tot, head_mask)
+    hdu_mask.writeto('' + str(target) +'_maskip.fits', overwrite=True)
 
     #Write the results in a fits file. We first modify the header to set the right units for each image
     hdu_p = fits.PrimaryHDU(img_p * mask_i,head_i)
@@ -446,6 +460,8 @@ def pol_maps_maker(target, name_i, RMSF_FWHM):
     head_polf['BUNIT']=''
     hdu_polf = fits.PrimaryHDU(img_polf * mask_i,head_polf)
     hdu_polf.writeto(name_polf, overwrite=True)
+
+    return rms_i, mask_tot[0,0,:,:]
 
 
 
@@ -641,6 +657,7 @@ def gal_rm_correction(catalog, mask_file, rm_map_file, exclrad, outrad, nsources
             rm_map_corrected[source_pixels] = rm_map[source_pixels] - median_gal_rm
             
             # Calculate and store the median corrected RM for this source
+            # !!! Check RM VALUES, SEE THE GALRM_CORRECTION.PY FILE !!!
             corrected_values = rm_map_corrected[source_pixels]
             corrected_values = corrected_values[~np.isnan(corrected_values)]
             if len(corrected_values) > 0:
@@ -670,19 +687,8 @@ def gal_rm_correction(catalog, mask_file, rm_map_file, exclrad, outrad, nsources
 
 
 
-def plot_rmgrid(catalog, output_file):
-    """
-    Plot spatial distribution of sources with circle size proportional to RM_corrected
-    and color scale based on RM_corrected values.
-    
-    Parameters:
-    -----------
-    catalog : astropy.table.Table
-        Catalog with source positions (ra, dec) and RM_corrected values
-    output_file : str
-        Path to save the output plot (PNG)
-    """
-    
+def plot_rmgrid(catalog, stokesi, rms_i, mask_tot, output_file):
+    ''' 
     # Extract the data
     ra = catalog['ra']
     dec = catalog['dec']
@@ -691,13 +697,13 @@ def plot_rmgrid(catalog, output_file):
     #ra = Angle(ra, unit=u.deg).to_string(unit=u.hour, sep=':', precision=2)
     #dec = Angle(dec, unit=u.deg).to_string(unit=u.degree, sep=':', precision=2)
     
-    '''
+    
     # Remove any NaN values for plotting
     valid_idx = ~np.isnan(rm_corrected)
     ra = ra[valid_idx]
     dec = dec[valid_idx]
     rm_corrected = rm_corrected[valid_idx]
-    '''
+    
     
     # Create figure
     fig, ax = plt.subplots(figsize=(12, 10))
@@ -733,6 +739,114 @@ def plot_rmgrid(catalog, output_file):
     
     # Save figure
     plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+    '''
+
+    '''
+
+    # !!! To update with FITS file writing and equal intervals in RM (+/- same RM, to have zero in the "greyish" area) for the RMgrid !!!
+    
+    points = np.column_stack([ra,dec])
+    vor = Voronoi(points)
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(14, 12))
+    
+    # Normalize RM values for color scale
+    norm = Normalize(vmin=-np.nanmax(rm_corrected), vmax=np.nanmax(rm_corrected))
+    cmap = matplotlib.cm.get_cmap('coolwarm')
+    
+    for point_idx in range(len(points)):
+        region = vor.regions[vor.point_region[point_idx]]
+        
+        # Skip empty regions or regions with infinite vertices
+        if len(region) == 0 or -1 in region:
+            continue
+        
+        # Get vertices of the region
+        vertices = vor.vertices[region]
+        
+        # Create polygon colored by RM value
+        polygon = Polygon(vertices, closed=True, alpha=0.7, 
+                         facecolor=cmap(norm(rm_corrected[point_idx])), 
+                         edgecolor='black', linewidth=0.5)
+        ax.add_patch(polygon)
+    
+    # Plot source points
+    scatter = ax.scatter(ra, dec, c=rm_corrected, cmap='coolwarm', 
+                        norm=norm, s=50, edgecolors='black', linewidth=1, zorder=5)
+    
+    # Add colorbar
+    cbar = plt.colorbar(scatter, ax=ax, label=r'RRM ($\rm{rad~m^{-2}}$)')
+    
+    # Set axis limits
+    ax.set_xlim(np.min(ra), np.max(ra))
+    ax.set_ylim(np.min(dec), np.max(dec))
+    
+    # Labels and title
+    ax.set_xlabel('RA (deg)', fontsize=12)
+    ax.invert_xaxis()
+    ax.set_ylabel('DEC (deg)', fontsize=12)
+    ax.set_title('RRM grid', fontsize=14)
+    ax.grid(True, alpha=0.3)
+    
+    # Save figure
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+    '''
+  
+    ra = catalog['ra']
+    dec = catalog['dec']
+    rm_corrected = catalog['RM_corrected']
+
+    # 2. Setup WCS and Data
+    with fits.open(stokesi) as hdui:
+        wcs = WCS(hdui[0].header).celestial 
+        contour_data = np.squeeze(hdui[0].data)
+
+    # Convert RA/Dec to Pixel coordinates for accurate Voronoi
+    coords_pix = wcs.all_world2pix(np.column_stack([ra, dec]), 0)
+    vor = Voronoi(coords_pix)
+    
+    fig, ax = plt.subplots(figsize=(12, 10), subplot_kw=dict(projection=wcs))
+    vmax = np.nanmax(np.abs(rm_corrected))
+    norm = Normalize(vmin=-vmax, vmax=vmax)
+    cmap = matplotlib.cm.get_cmap('coolwarm')
+    
+    for point_idx in range(len(coords_pix)):
+        region_idx = vor.point_region[point_idx]
+        region = vor.regions[region_idx]
+        if not region or -1 in region:
+            continue
+        vertices = vor.vertices[region]
+        # Since we are already in pixel space and the ax is projected via WCS, 
+        # we don't need a transform here IF we plot in pixel units.
+        polygon = Polygon(vertices, closed=True, alpha=0.5, 
+                         facecolor=cmap(norm(rm_corrected[point_idx])), 
+                         edgecolor='grey', linewidth=0.5)
+        ax.add_patch(polygon)
+    
+    contour_levels = [5.* rms_i, 25.* rms_i, 125. * rms_i, 625.* rms_i]
+    ax.contour(contour_data, levels=contour_levels, colors='black', 
+               linewidths=1.0, alpha=0.8)
+    
+    scatter = ax.scatter(ra, dec, c=rm_corrected, cmap='coolwarm', norm=norm, 
+                        s=20, edgecolors='grey', linewidth=0.5, 
+                        transform=ax.get_transform('world'), zorder=10)
+    
+    ax.coords[0].set_axislabel('Right Ascension')
+    ax.coords[1].set_axislabel('Declination')
+    
+    # Set limits based on data spread (in pixels)
+    pad = 20
+    ax.set_xlim(np.min(coords_pix[:,0]) - pad, np.max(coords_pix[:,0]) + pad)
+    ax.set_ylim(np.min(coords_pix[:,1]) - pad, np.max(coords_pix[:,1]) + pad)
+    
+    plt.colorbar(scatter, label=r'RRM (rad m$^{-2}$)', fraction=0.046, pad=0.04)
+    plt.title('RRM Grid')
+    
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     plt.close()
 
@@ -845,6 +959,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ## To modify for your specific case
+
+    print("############################")
+    print("")
+    print("MGCLS RM analysis")
+    print("Check https://github.com/emaderubeis/mgcls_rmanalysis/tree/main for more")
+    print("")
+    print("############################")
    
     name_i=args.stokesi
 
@@ -862,12 +983,11 @@ if __name__ == "__main__":
     outrad = args.outrad        # Outside radius in degrees for the annulus method (see Anderson et al. 2024)
     nsources = args.nsources    # Number of sources to retain for annulus method (see Anderson et al. 2024)
 
+    '''
     # Check and correct the header of the MGCLS Q and U cubes
     header_checker(args.inputs)
 
-
     # Write here the file with the list of frequencies - for these cubes these are already known
-
     frequ = np.array([908.e06, 952.e06, 996.e06, 1044.e06, 1093.e06, 1145.e06, 1318.e06, 1382.e06, 1448.e06, 1482.e06, 1594.e06, 1656.e06])
     with open(''+args.target+'_freqlist.dat', 'w') as lfr:
         for item in frequ:
@@ -876,7 +996,6 @@ if __name__ == "__main__":
 
     # Here we select a region for which a "sub-cube" is obtained and write the RMS for each image of the cube 
     # for both Q and U into a text file
-
     if os.path.exists('./' +str(args.target)+ '_noiselistQUavg.dat'):
         print("Noise on Q and U cubes has already been calculated")
     else:
@@ -887,13 +1006,11 @@ if __name__ == "__main__":
     # Execution of rmsynth3D
     if (args.rmsynth == True):
         print("RM-synthesis 3D execution:")
-        print("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + " " + str(args.inputs[1]) + " " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
-        os.system("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + " " + str(args.inputs[1]) + " " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
-        #os.system("mkdir -p rmsynthesis && mv *FDF*.fits rmsynthesis/ && mv *RMSF*.fits rmsynthesis/")
-        #print("Products moved to ./rmsynthesis/")
+        print("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + "_cor_header.fits " + str(args.inputs[1]) + "_cor_header.fits " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
+        os.system("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + "_cor_header.fits " + str(args.inputs[1]) + "_cor_header.fits " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
     else:
         print("Command to execute the RM-synthesis 3D on your own")
-        print("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + " " + str(args.inputs[1]) + " " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
+        print("~/.local/bin/rmsynth3d " + str(args.inputs[0]) + "_cor_header.fits " + str(args.inputs[1]) + "_cor_header.fits " + args.target +"_freqlist.dat -n ./" + str(args.target) + "_noiselistQUavg.dat -o " + str(args.target) + "_ -l 350 -d 3 -v")
 
     
     # Execution of the rmclean3D
@@ -904,17 +1021,16 @@ if __name__ == "__main__":
         print("Command to execute the rmclean3d on your own")
         print("~/.local/bin/rmclean3d " + str(args.target) + "_FDF_tot_dirty.fits " +str(args.target) + "_RMSF_tot.fits -c 3.464e-5 -n 1000 -v -o " + str(args.target) + "_")
 
-    # After doing RM-synthesis (and eventually rmclean), is now time to extract the RM information from the (cleaned)FDF
-
-
+    '''
     print("Stokes I map header correction")
     header_checker_stokesi(name_i)
+    
     
     #sigma_p = 4.33e-6 # Jy/beam,read from the RMsynth_parameters.py script
     RMSF_FWHM = 45.44 # in rad/m2,read from the RMSF_FWHM.fits image or from the RMsynth_parameters.py script (theoretical value)
 
-    pol_maps_maker(args.target, name_i, RMSF_FWHM)
-
+    rms_i, mask_tot = pol_maps_maker(args.target, name_i, RMSF_FWHM)
+    
     print("Plotting maps")
     plot_stokesi(args.target, "" + str(name_i) + "_cor_header.fits", args.ra, args.dec, args.rfh)
     plot_polint(args.target, '' + str(args.target) +'_P_clean_6sig_unmasked.fits', args.ra, args.dec, args.rfh)
@@ -932,8 +1048,8 @@ if __name__ == "__main__":
 
     # input.mask  you can give the Stokes I and Q/U combined mask
   
-    ## Galactic RM correction
     
+    ## Galactic RM correction
     print("Extract RM for the catalog sources")
     catalog_with_rm = extract_rm_for_sources(
         catalog_file, 
@@ -956,6 +1072,9 @@ if __name__ == "__main__":
     # Plot the corrected RM grid following Loi et al. (2025)
     plot_rmgrid(
         catalog_with_rm,
+        "" + str(name_i) + "_cor_header.fits",
+        rms_i,
+        mask_tot,
         output_file = output_file.replace('.fits', '_rmgrid.png')
     )
 
